@@ -5,7 +5,9 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Encodings.Web;
+using System.Xml;
 using Core.ECSS;
+using Core.Engine;
 using Core.GLHelper;
 using Core.MemoryManagement;
 using Core.Transformations;
@@ -22,8 +24,6 @@ namespace Core.Shimshek;
 [Component]
 public unsafe struct Sprite
 {
-
-
     // static constructor
     static Sprite()
     {
@@ -288,7 +288,7 @@ public unsafe struct Sprite
     private static int gShader;
 
     // The gemoetry vertex buffer object
-    // usad by all sprites. It stores the
+    // used by all sprites. It stores the
     // position of each vertex
     private static int gGVBO;
 
@@ -314,7 +314,7 @@ public unsafe struct Sprite
     private static int gEBO;
 
     // The amount of space that
-    // has been allocated measured
+    // has been allocated, measured
     // per sprite
     private static int bufferLength;
 
@@ -397,7 +397,8 @@ public unsafe struct Sprite
         // texture will be saved at.
         // Defaults to the length of
         // the texture object array
-        int nIndex = textureObjects.Length;
+        int nIndex = textureObjects.Length == 0 ?
+            1 : textureObjects.Length;
 
         // Find if there is an
         // availlable slot for
@@ -568,7 +569,8 @@ public unsafe struct Sprite
             // texture will be saved at.
             // Defaults to the length of
             // the texture object array
-            int nIndex = textureObjects.Length;
+            int nIndex = textureObjects.Length == 0 ?
+                1 : textureObjects.Length;
 
             // Find if there is an
             // availlable slot for
@@ -611,6 +613,10 @@ public unsafe struct Sprite
             texes.Values[i] = nIndex;
         }
 
+
+        isTextureArrayDirty = true;
+
+
         // Return the array
         // that holds the
         // texture arrays
@@ -623,7 +629,7 @@ public unsafe struct Sprite
         private static void manageTextures()
         {
             // Iterate through each texture 
-            for(int i = 0; i < textureObjects.Length; i++)
+            for(int i = 1; i < textureObjects.Length; i++)
             {
                 // If current iteration is initialised...
                 if(textureObjects.Values[i].TextureID != 0)
@@ -739,19 +745,21 @@ public unsafe struct Sprite
         // Iterate through each camera component
         for(int i = 1; i < camLength; i++)
         {
-            // If the current camera doesn't
-            // contain a translation component...
-            if(!ECSSHandler.ContainsComponent<Translation>(camEntities[i]))
-                // Skip to the
-                // next camera
-                continue;
-
             // If the current camera is either
             // nonexistent or diabled...
             if(!ECSSHandler.GetEnableState(camEntities[i]))
                 // Skip to the
                 // next camera
                 continue;
+
+
+            // If the current camera doesn't
+            // contain a translation component...
+            if(!ECSSHandler.ContainsComponent<Scale>(camEntities[i]))
+                // Skip to the
+                // next camera
+                continue;
+
 
             // Set the view matrix of
             // the current camera
@@ -826,6 +834,18 @@ public unsafe struct Sprite
             // Iterate through each sprite
             for(int i = 1; i < spriteLength; i++)
             {
+                if(spriteEntities[i] == 0)
+                    continue;
+
+
+                if(!ECSSHandler.GetEnableState(spriteEntities[i]))
+                    continue;
+
+
+                if(!ECSSHandler.ContainsComponent<Scale>(spriteEntities[i]))
+                    continue;
+
+
                 // Get the translation of
                 // the current sprite
                 Vector3 spritePos =
@@ -861,6 +881,7 @@ public unsafe struct Sprite
                     // Resize the list
                     nonOccludedSprites = (int*)NativeMemory.Realloc(nonOccludedSprites, (nuint)(sizeof(int) * 2 * (lastWrittenIndex + 2)));
 
+
                 // Store the ID of the
                 // current sprite
                 nonOccludedSprites[lastWrittenIndex++] = spriteEntities[i];
@@ -873,7 +894,7 @@ public unsafe struct Sprite
             }
 
 
-            spritesInCircle = lastWrittenIndex / 2;
+            spritesInCircle = lastWrittenIndex >> 1;
 
 
             // If the length of the buffer
@@ -1157,7 +1178,7 @@ public unsafe struct Sprite
             ShaderHelper.SetInt("uIsTransparentPass", 0, gShader);
 
             // Draw the instances
-            GL.DrawElementsInstanced(PrimitiveType.Triangles, Indices.Length, DrawElementsType.UnsignedByte, 0, bufferLength);
+            GL.DrawElementsInstanced(PrimitiveType.Triangles, Indices.Length, DrawElementsType.UnsignedByte, 0, spritesInCircle);
         }
 
         // Second, only the transparent objects
@@ -1172,8 +1193,8 @@ public unsafe struct Sprite
             // Iterate through each sprite
             for(int i = spritesInCircle * 2 - 1; i >= 0 ; i -= 2)
             {
-                if(nonOccludedSprites[i] == 0)
-                    continue;
+                if(nonOccludedSprites[i - 1] == 0)
+                    break;
 
                 // Get the sprite
                 Sprite* s =
@@ -1213,7 +1234,7 @@ public unsafe struct Sprite
             ShaderHelper.SetInt("uIsTransparentPass", 1, gShader);
 
             // Draw the instances
-            GL.DrawElementsInstanced(PrimitiveType.Triangles, Indices.Length, DrawElementsType.UnsignedByte, 0, bufferLength);
+            GL.DrawElementsInstanced(PrimitiveType.Triangles, Indices.Length, DrawElementsType.UnsignedByte, 0, spritesInCircle);
         }
 
 
@@ -1274,12 +1295,12 @@ public unsafe struct Camera
     {
         Camera* cam = ECSSHandler.GetComponent<Camera>(entityID);
 
-        cam->AspectRatio = Engine.FinderEngine.GetWindowSize.X / Engine.FinderEngine.GetWindowSize.Y;
+        cam->AspectRatio = (float)FinderEngine.GetWindowSize.X / FinderEngine.GetWindowSize.Y;
     }
 
 
     [ComponentResize]
-    public static void Resize(int x, int y)
+    public static void Resize()
     {   
         Camera* cameras;
 
@@ -1291,8 +1312,10 @@ public unsafe struct Camera
         ECSSHandler.GetCompactColumn(&cameras, &entities, &cameraLength);
 
 
+        float nAspect = (float)FinderEngine.GetWindowSize.X / FinderEngine.GetWindowSize.Y;
+
         for(int i = 1; i < cameraLength; i++)
-            cameras[i].AspectRatio = (float)x / y;
+            cameras[i].AspectRatio = nAspect;
     }
 
 

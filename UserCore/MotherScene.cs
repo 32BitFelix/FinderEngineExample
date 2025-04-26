@@ -11,6 +11,10 @@ using Core.MemoryManagement;
 using Core.Engine;
 using Core.TonKlang;
 using OpenTK.Audio.OpenAL;
+using System.Runtime.InteropServices;
+using OpenTK.Windowing.Common;
+using UserCode.Menu;
+using UserCore.EditorImprov;
 
 
 namespace UserCore.MotherScene;
@@ -22,16 +26,34 @@ public static unsafe class Mother
     [Start]
     public static void Start()
     {
+        
 
     #if DEBUG
 
-        ECSSHandler.AddScene(typeof(Editor));
+        ECSSHandler.AddScene(typeof(LevelMaker));
 
-    #else
-
-        ECSSHandler.AddScene(typeof(GameWorld));
+        return;
 
     #endif
+
+
+        WindowState* wState =
+            (WindowState*)NativeMemory.Alloc(sizeof(WindowState));
+
+        *wState = WindowState.Fullscreen;
+
+        FinderEngine.ChangeWindowAttrib(WindowChangeClue.WindowMode, wState);
+
+
+        CursorModeValue* cState =
+            (CursorModeValue*)NativeMemory.Alloc(sizeof(CursorModeValue));
+
+        *cState = CursorModeValue.CursorDisabled;
+
+        FinderEngine.ChangeWindowAttrib(WindowChangeClue.CursorMode, cState);
+
+
+        ECSSHandler.AddScene(typeof(MenuScene));
 
     }
 

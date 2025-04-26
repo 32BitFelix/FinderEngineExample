@@ -385,6 +385,7 @@ public unsafe struct SourceObject
                     if(((SourceStateFlags)sourceChanges.Values[i].ClueData & SourceStateFlags.Paused) == SourceStateFlags.Paused)
                         AL.SourcePause(src);
 
+
                     // This is unnecessarily complicated.
                     // Why didn't openal use buffers for
                     // the attributes like opengl too?
@@ -520,14 +521,14 @@ public unsafe struct SourceObject
         // set to the length of audioObjects
         int nIndex = audioObjects.Length;
 
+
         // Iterate through each
         // element
         for(int i = 1; i < audioObjects.Length; i++)
         {   
             // If the current element
             // is already occupied...
-            if(audioObjects.Values[i].buffer != 0 &&
-                audioObjects.Values[i].path != null)
+            if(audioObjects.Values[i].buffer != 0)
                 // Skip to the
                 // next iteration
                 continue;
@@ -550,6 +551,7 @@ public unsafe struct SourceObject
             // the loop
             break;
         }
+
 
         // Allocate the char array
         // to hold the path
@@ -859,8 +861,12 @@ public unsafe struct SourceObject
 
         for(int i = 1; i < sourceObjLen; i++)
         {   
+            if(!ECSSHandler.GetEnableState(sourceObjEnts[i]))
+                continue;
+        
             if(!ECSSHandler.ContainsComponent<Scale>(sourceObjEnts[i]))
                 continue;
+                
 
             // Get the actual source for the
             // current source object

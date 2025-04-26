@@ -19,15 +19,380 @@ namespace Core.SAS2D;
 	[Component]
 	public struct BroadPhaser
 	{
-		// Fixed update gets
-        // called once every
-        // physics pass
-		[ComponentFixedUpdate]
+		// The array to hold all the
+		// pairs that have been made out
+		public static NA<long> Pairs;
+
+		// The radius of the
+		// broad phasing circle
+		public float Radius;
+	}
+
+
+	// Token: 0x0200001C RID: 28
+	[Component]
+	public unsafe struct RigidBody
+	{
+		// Token: 0x0600006C RID: 108 RVA: 0x000057FC File Offset: 0x000039FC
+		unsafe static RigidBody()
+		{
+			fixed (NA<bool>* ptr = &occupied)
+			{
+				NA<bool>* oPtr = ptr;
+				Set(0, true, oPtr);
+			}
+			fixed (NA<float>* ptr2 = &frictions)
+			{
+				NA<float>* fPtr = ptr2;
+				Set(0, 0f, fPtr);
+			}
+			fixed (NA<float>* ptr2 = &bouncinesses)
+			{
+				NA<float>* bPtr = ptr2;
+				Set(0, 0f, bPtr);
+			}
+		}
+
+		// Token: 0x0600006D RID: 109 RVA: 0x00005868 File Offset: 0x00003A68
+		//[ComponentFixedUpdate]
 		public unsafe static void FixedUpdate()
 		{
+			RigidBody* rigidBodies;
+
+			int* rigidBodyEntities;
+
+			int rigidBodyLength;
+
+
+			ECSSHandler.GetCompactColumn(&rigidBodies, &rigidBodyEntities, &rigidBodyLength);
+
+
+			float deltaTime = ECSSHandler.FixedDeltaTime * ECSSHandler.GetTimeScale();
+
+			for (int i = 1; i < rigidBodyLength; i++)
+			{
+				if(rigidBodyEntities[i] == 0)
+					continue;
+
+				if(!ECSSHandler.GetEnableState(rigidBodyEntities[i]))
+					continue;
+
+				if((rigidBodies[i].rigidBodyAttribs & RigidBodyAttrib.NotSimulated) == RigidBodyAttrib.NotSimulated)
+					continue;
+
+
+				Translation* translation = ECSSHandler.GetComponent<Translation>(rigidBodyEntities[i]);
+
+				rigidBodies[i]._translationalVelocity = translation->Translations.Xy - translation->Translations.Xy;
+
+				rigidBodies[i]._linearVelocity = (rigidBodies[i]._linearVelocity + (rigidBodies[i]._linearVelocity + WorldGravity * rigidBodies[i].Mass * deltaTime)) * 0.5f;
+				
+				translation->Translations.Xy = translation->Translations.Xy + rigidBodies[i]._linearVelocity * deltaTime;
+			}
+		}
+
+		// Token: 0x0600006E RID: 110 RVA: 0x000059AC File Offset: 0x00003BAC
+		public static void CreateRigidBody(int entityID, int materialIndex = 0, float mass = 1f)
+		{
+			RigidBody r = new RigidBody
+			{
+				MaterialIndex = materialIndex,
+				Mass = mass
+			};
+
+			ECSSHandler.AddComponent(entityID, r);
+		}
+
+		// Token: 0x0600006F RID: 111 RVA: 0x000059DA File Offset: 0x00003BDA
+		public unsafe static void AddForce(int entityID, Vector2 force)
+		{
+			RigidBody* r = ECSSHandler.GetComponent<RigidBody>(entityID);
+
+			if((r->rigidBodyAttribs & RigidBodyAttrib.NotSimulated) == RigidBodyAttrib.NotSimulated)
+				return;
+
+			r->_linearVelocity += force;
+		}
+
+		// Token: 0x06000070 RID: 112 RVA: 0x000059F8 File Offset: 0x00003BF8
+		public unsafe static int MakeRigidBodyMaterial(float bounciness, float friction)
+		{
+			// Holds the index at which
+			// the new rigidbody material
+			// should reside at.
+			// Fallback is set to the
+			// length of the array
+			int nIndex = occupied.Length;
+
+			// Iterate through each occupation
+			for(int i = 0; i < occupied.Length; i++)
+			{
+				// If the current material
+				// is occupied...
+				if(occupied.Values[i])
+					// Skip to the
+					// next iteration
+					continue;
+
+				// Save the new index
+				nIndex = i;
+
+				// End the loop
+				break;
+			}
+
+
+			fixed (NA<bool>* ptr = &occupied)
+			{
+				NA<bool>* oPtr = ptr;
+				Set(nIndex, true, oPtr);
+			}
+
+			fixed (NA<float>* ptr2 = &frictions)
+			{
+				NA<float>* fPtr = ptr2;
+				Set(nIndex, friction, fPtr);
+			}
+
+			fixed (NA<float>* ptr2 = &bouncinesses)
+			{
+				NA<float>* bPtr = ptr2;
+				Set(nIndex, bounciness, bPtr);
+			}
+
+			return nIndex;
+		}
+
+		// Token: 0x04000058 RID: 88
+		public static Vector2 WorldGravity = (0f, -9.81f);
+
+		// Token: 0x04000059 RID: 89
+		public static NA<float> bouncinesses;
+
+		// Token: 0x0400005A RID: 90
+		public static NA<float> frictions;
+
+		// Token: 0x0400005B RID: 91
+		private static NA<bool> occupied;
+
+		// Token: 0x0400005C RID: 92
+		public Vector2 _translationalVelocity;
+
+		// Token: 0x0400005D RID: 93
+		public Vector2 _linearVelocity;
+
+		// Token: 0x0400005E RID: 94
+		public int MaterialIndex;
+
+		// Token: 0x0400005F RID: 95
+		public float Mass;
+
+		// Token: 0x04000060 RID: 96
+		public RigidBodyAttrib rigidBodyAttribs;
+
+
+		[ComponentInitialise]
+		public static void Initialize(int entityID)
+		{
+
+		}
+
+
+		[ComponentFinalise]
+		public static void Finalize(int entityID)
+		{
+			RigidBody* rb = ECSSHandler.GetComponent<RigidBody>(entityID);
+
+			occupied.Values[rb->MaterialIndex] = false;
+		}
+	}
+
+
+	// Defines unique behaviour
+	// for a rigidbody
+	public enum RigidBodyAttrib : byte
+	{
+		// No attribute has
+		// been applied
+		None = 0,
+
+		// Constraints the
+		// z rotation from
+		// all physics interactions
+		ConstrainZRot = 1,
+
+		// Constraints the
+		// x position from
+		// all physics interactions
+		ConstrainXPos = 2,
+
+		// Constraints the
+		// y position from
+		// all physics interactions
+		ConstrainYPos = 4,
+
+		// Does not simulate the
+		// rigidbody at any shape
+		NotSimulated = 8
+	}
+
+
+	// The collider component
+	// makes any bound entity
+	// affected by collision
+	[Component]
+	public unsafe struct Collider
+	{
+		// static constructor
+		unsafe static Collider()
+		{
+			
+			fixed (NA<int>* ptr = &layers)
+			{
+				NA<int>* lPtr = ptr;
+				NAHandler.Set(0, 0, lPtr);
+			}
+
+
+			fixed (NA<int>* ptr = &ignoreLayers)
+			{
+				NA<int>* ilPtr = ptr;
+				NAHandler.Set(0, -1, ilPtr);
+			}
+
+
+			fixed (NA<IntPtr>* ptr2 = &onEnters)
+			{
+				NA<IntPtr>* oEPtr = ptr2;
+				NAHandler.Set(0, 0, oEPtr);
+			}
+
+
+			fixed (NA<IntPtr>* ptr2 = &onStays)
+			{
+				NA<IntPtr>* oSPtr = ptr2;
+				NAHandler.Set(0, 0, oSPtr);
+			}
+
+
+			fixed (NA<IntPtr>* ptr2 = &onExits)
+			{
+				NA<IntPtr>* oEPtr2 = ptr2;
+				NAHandler.Set(0, 0, oEPtr2);
+			}
+		}
+
+		// Fixed update is called every physics update
+		[ComponentFixedUpdate]
+		public static void FixedUpdate()
+		{
+			RigidBody.FixedUpdate();
+
+			__broadPhase();
+
+			__collisionCheck();
+		}
+
+		// Does all sorts of collision
+		// detection with the pairs
+		// found in the broad phaser
+		private unsafe static void __collisionCheck()
+		{
+			// Iterate through each pair
+			for(int i = 0; i < BroadPhaser.Pairs.Length; i++)
+			{
+				// Get the first ID
+				int valA = (int)(BroadPhaser.Pairs.Values[i] >> 32);
+
+				// Get the second ID
+				int valB = (int)BroadPhaser.Pairs.Values[i];
+
+
+				// If either of the IDs are disbaled
+				// or invalid...
+				if(!ECSSHandler.GetEnableState(valA) || !ECSSHandler.GetEnableState(valB))
+					// Skip to the
+					// next iteration
+					continue;
+
+
+				// Get the collider component
+				// of entity A
+				Collider* colliderA = ECSSHandler.GetComponent<Collider>(valA);
+
+				// Get the collider component
+				// of entity B
+				Collider* colliderB = ECSSHandler.GetComponent<Collider>(valB);
+
+
+				if((colliderA->colliderAttribs & ColliderAttrib.NotResolved) == ColliderAttrib.NotResolved)
+					continue;
+
+				if((colliderB->colliderAttribs & ColliderAttrib.NotResolved) == ColliderAttrib.NotResolved)
+					continue;
+
+				
+				// If collider a ignores collider b...
+				if(ignoreLayers.Values[colliderA->colliderMaterialIndex] ==
+					layers.Values[colliderB->colliderMaterialIndex])
+					// Skip to the
+					// next iteration
+					continue;
+
+
+				// If collider b ignores collider a...
+				if(ignoreLayers.Values[colliderB->colliderMaterialIndex] ==
+					layers.Values[colliderA->colliderMaterialIndex])
+					// Skip to the
+					// next iteration
+					continue;
+
+
+				// A float to hold
+				// the closest depth
+				// from the collision
+				float sDepth = 0f;
+
+				// A vector2 to hold
+				// the normal of the
+				// closest collision
+				Vector2 sNormal = (0, 0);
+
+
+				// Check if a
+				// collision occured
+				__areColliding(valA, valB, colliderA, colliderB, &sDepth, &sNormal);
+
+
+				// Handling of the
+				// collision events
+				// depending on the
+				// situation
+				__collisionEvent(valA, valB, colliderA, colliderB, sNormal != (0, 0), sNormal);
+
+
+				if((colliderA->colliderAttribs & ColliderAttrib.Effector) == ColliderAttrib.Effector)
+
+					continue;
+
+
+				if((colliderB->colliderAttribs & ColliderAttrib.Effector) == ColliderAttrib.Effector)
+				
+					continue;
+
+
+				if (sNormal != (0, 0) && ECSSHandler.ContainsComponent<RigidBody>(valA) && ECSSHandler.ContainsComponent<RigidBody>(valB))
+
+					__rbResolve(valA, valB, sNormal);
+			}
+		}
+
+
+		private unsafe static void __broadPhase()
+		{
             // Reset each pair
-            for(int i = 0; i < Pairs.Length; i++)
-                Pairs.Values[i] = 0;
+            for(int i = 0; i < BroadPhaser.Pairs.Length; i++)
+                BroadPhaser.Pairs.Values[i] = 0;
 
             // The counter that keeps
             // track of the last index
@@ -165,363 +530,12 @@ namespace Core.SAS2D;
 
 					
 					// Fix the array . . .
-					fixed(NA<long>* pPtr = &Pairs)
+					fixed(NA<long>* pPtr = &BroadPhaser.Pairs)
 						// Add the new pair
 						// to the list
 						Set(pairIndex++, pair, pPtr);
                 }
             }
-		}
-
-		// The array to hold all the
-		// pairs that have been made out
-		public static NA<long> Pairs;
-
-		// The radius of the
-		// broad phasing circle
-		public float Radius;
-	}
-
-
-	// Token: 0x0200001C RID: 28
-	[Component]
-	public unsafe struct RigidBody
-	{
-		// Token: 0x0600006C RID: 108 RVA: 0x000057FC File Offset: 0x000039FC
-		unsafe static RigidBody()
-		{
-			fixed (NA<bool>* ptr = &occupied)
-			{
-				NA<bool>* oPtr = ptr;
-				Set(0, true, oPtr);
-			}
-			fixed (NA<float>* ptr2 = &frictions)
-			{
-				NA<float>* fPtr = ptr2;
-				Set(0, 0f, fPtr);
-			}
-			fixed (NA<float>* ptr2 = &bouncinesses)
-			{
-				NA<float>* bPtr = ptr2;
-				Set(0, 0f, bPtr);
-			}
-		}
-
-		// Token: 0x0600006D RID: 109 RVA: 0x00005868 File Offset: 0x00003A68
-		[ComponentFixedUpdate]
-		public unsafe static void FixedUpdate()
-		{
-			RigidBody* rigidBodies;
-
-			int* rigidBodyEntities;
-
-			int rigidBodyLength;
-
-
-			ECSSHandler.GetCompactColumn(&rigidBodies, &rigidBodyEntities, &rigidBodyLength);
-
-
-			float deltaTime = ECSSHandler.FixedDeltaTime * ECSSHandler.GetTimeScale();
-
-			for (int i = 1; i < rigidBodyLength; i++)
-			{
-				if(ECSSHandler.GetEnableState(rigidBodyEntities[i]) && (rigidBodies[i].rigidBodyAttribs & RigidBodyAttrib.NotSimulated) == RigidBodyAttrib.NotSimulated)
-					continue;
-
-
-				Translation* translation = ECSSHandler.GetComponent<Translation>(rigidBodyEntities[i]);
-
-				rigidBodies[i]._translationalVelocity = translation->Translations.Xy - translation->Translations.Xy;
-
-				rigidBodies[i]._linearVelocity = (rigidBodies[i]._linearVelocity + (rigidBodies[i]._linearVelocity + WorldGravity * rigidBodies[i].Mass * deltaTime)) * 0.5f;
-				
-				translation->Translations.Xy = translation->Translations.Xy + rigidBodies[i]._linearVelocity * deltaTime;
-			}
-		}
-
-		// Token: 0x0600006E RID: 110 RVA: 0x000059AC File Offset: 0x00003BAC
-		public static void CreateRigidBody(int entityID, int materialIndex = 0, float mass = 1f)
-		{
-			RigidBody r = new RigidBody
-			{
-				MaterialIndex = materialIndex,
-				Mass = mass
-			};
-
-			ECSSHandler.AddComponent(entityID, r);
-		}
-
-		// Token: 0x0600006F RID: 111 RVA: 0x000059DA File Offset: 0x00003BDA
-		public unsafe static void AddForce(int entityID, Vector2 force)
-		{
-			RigidBody* r = ECSSHandler.GetComponent<RigidBody>(entityID);
-
-			if((r->rigidBodyAttribs & RigidBodyAttrib.NotSimulated) == RigidBodyAttrib.NotSimulated)
-				return;
-
-			r->_linearVelocity += force;
-		}
-
-		// Token: 0x06000070 RID: 112 RVA: 0x000059F8 File Offset: 0x00003BF8
-		public unsafe static int MakeRigidBodyMaterial(float bounciness, float friction)
-		{
-			// Holds the index at which
-			// the new rigidbody material
-			// should reside at.
-			// Fallback is set to the
-			// length of the array
-			int nIndex = occupied.Length;
-
-			// Iterate through each occupation
-			for(int i = 0; i < occupied.Length; i++)
-			{
-				// If the current material
-				// is occupied...
-				if(occupied.Values[i])
-					// Skip to the
-					// next iteration
-					continue;
-
-				// Save the new index
-				nIndex = i;
-
-				// End the loop
-				break;
-			}
-
-
-			fixed (NA<bool>* ptr = &occupied)
-			{
-				NA<bool>* oPtr = ptr;
-				Set(nIndex, true, oPtr);
-			}
-
-			fixed (NA<float>* ptr2 = &frictions)
-			{
-				NA<float>* fPtr = ptr2;
-				Set(nIndex, friction, fPtr);
-			}
-
-			fixed (NA<float>* ptr2 = &bouncinesses)
-			{
-				NA<float>* bPtr = ptr2;
-				Set(nIndex, bounciness, bPtr);
-			}
-
-			return nIndex;
-		}
-
-		// Token: 0x04000058 RID: 88
-		public static Vector2 WorldGravity = new ValueTuple<float, float>(0f, -9.81f);
-
-		// Token: 0x04000059 RID: 89
-		public static NA<float> bouncinesses;
-
-		// Token: 0x0400005A RID: 90
-		public static NA<float> frictions;
-
-		// Token: 0x0400005B RID: 91
-		private static NA<bool> occupied;
-
-		// Token: 0x0400005C RID: 92
-		public Vector2 _translationalVelocity;
-
-		// Token: 0x0400005D RID: 93
-		public Vector2 _linearVelocity;
-
-		// Token: 0x0400005E RID: 94
-		public int MaterialIndex;
-
-		// Token: 0x0400005F RID: 95
-		public float Mass;
-
-		// Token: 0x04000060 RID: 96
-		public RigidBodyAttrib rigidBodyAttribs;
-
-
-		[ComponentInitialise]
-		public static void Initialize(int entityID)
-		{
-
-		}
-
-
-		[ComponentFinalise]
-		public static void Finalize(int entityID)
-		{
-			RigidBody* rb = ECSSHandler.GetComponent<RigidBody>(entityID);
-
-			occupied.Values[rb->MaterialIndex] = false;
-		}
-	}
-
-
-	// Defines unique behaviour
-	// for a rigidbody
-	public enum RigidBodyAttrib : byte
-	{
-		// No attribute has
-		// been applied
-		None = 0,
-
-		// Constraints the
-		// z rotation from
-		// all physics interactions
-		ConstrainZRot = 1,
-
-		// Constraints the
-		// x position from
-		// all physics interactions
-		ConstrainXPos = 2,
-
-		// Constraints the
-		// y position from
-		// all physics interactions
-		ConstrainYPos = 4,
-
-		// Does not simulate the
-		// rigidbody at any shape
-		NotSimulated = 8
-	}
-
-
-	// The collider component
-	// makes any bound entity
-	// affected by collision
-	[Component]
-	public unsafe struct Collider
-	{
-		// static constructor
-		unsafe static Collider()
-		{
-			
-			fixed (NA<int>* ptr = &layers)
-			{
-				NA<int>* lPtr = ptr;
-				NAHandler.Set(0, 0, lPtr);
-			}
-
-
-			fixed (NA<int>* ptr = &ignoreLayers)
-			{
-				NA<int>* ilPtr = ptr;
-				NAHandler.Set(0, -1, ilPtr);
-			}
-
-
-			fixed (NA<IntPtr>* ptr2 = &onEnters)
-			{
-				NA<IntPtr>* oEPtr = ptr2;
-				NAHandler.Set(0, 0, oEPtr);
-			}
-
-
-			fixed (NA<IntPtr>* ptr2 = &onStays)
-			{
-				NA<IntPtr>* oSPtr = ptr2;
-				NAHandler.Set(0, 0, oSPtr);
-			}
-
-
-			fixed (NA<IntPtr>* ptr2 = &onExits)
-			{
-				NA<IntPtr>* oEPtr2 = ptr2;
-				NAHandler.Set(0, 0, oEPtr2);
-			}
-		}
-
-		// Fixed update is called every physics update
-		[ComponentFixedUpdate]
-		public static void FixedUpdate()
-		{
-			__collisionCheck();
-		}
-
-		// Does all sorts of collision
-		// detection with the pairs
-		// found in the broad phaser
-		private unsafe static void __collisionCheck()
-		{
-			// Iterate through each pair
-			for(int i = 0; i < BroadPhaser.Pairs.Length; i++)
-			{
-				// Get the first ID
-				int valA = (int)(BroadPhaser.Pairs.Values[i] >> 32);
-
-				// Get the second ID
-				int valB = (int)BroadPhaser.Pairs.Values[i];
-
-
-				// If either of the IDs are disbaled
-				// or invalid...
-				if(!ECSSHandler.GetEnableState(valA) || !ECSSHandler.GetEnableState(valB))
-					// Skip to the
-					// next iteration
-					continue;
-
-
-				// Get the collider component
-				// of entity A
-				Collider* colliderA = ECSSHandler.GetComponent<Collider>(valA);
-
-				// Get the collider component
-				// of entity B
-				Collider* colliderB = ECSSHandler.GetComponent<Collider>(valB);
-
-				
-				// If collider a ignore collider b...
-				if(ignoreLayers.Values[colliderA->colliderMaterialIndex] ==
-					layers.Values[colliderB->colliderMaterialIndex])
-					// Skip to the
-					// next iteration
-					continue;
-
-
-				// If collider b ignores collider a...
-				if(ignoreLayers.Values[colliderB->colliderMaterialIndex] ==
-					layers.Values[colliderA->colliderMaterialIndex])
-					// Skip to the
-					// next iteration
-					continue;
-
-
-				// A float to hold
-				// the closest depth
-				// from the collision
-				float sDepth = 0f;
-
-				// A vector2 to hold
-				// the normal of the
-				// closest collision
-				Vector2 sNormal = (0, 0);
-
-
-				// Check if a
-				// collision occured
-				__areColliding(valA, valB, colliderA, colliderB, &sDepth, &sNormal);
-
-
-				// Handling of the
-				// collision events
-				// depending on the
-				// situation
-				__collisionEvent(valA, valB, colliderA, colliderB, sNormal != (0, 0), sNormal);
-
-
-				if((colliderA->colliderAttribs & ColliderAttrib.Effector) == ColliderAttrib.Effector)
-
-					continue;
-
-
-				if((colliderB->colliderAttribs & ColliderAttrib.Effector) == ColliderAttrib.Effector)
-				
-					continue;
-
-
-				if (sNormal != (0, 0) && ECSSHandler.ContainsComponent<RigidBody>(valA) && ECSSHandler.ContainsComponent<RigidBody>(valB))
-
-					__rbResolve(valA, valB, sNormal);
-			}
 		}
 
 		// Checks if the given pair
@@ -565,26 +579,26 @@ namespace Core.SAS2D;
 			for(int a = 0; a < colliderA->triangles.Length; a++)
 			{
 
-				*aVals = colliderA->vertices.Values[colliderA->triangles.Values[a].A];
+				aVals[0] = colliderA->vertices.Values[colliderA->triangles.Values[a].A];
 				aVals[1] = colliderA->vertices.Values[colliderA->triangles.Values[a].B];
 				aVals[2] = colliderA->vertices.Values[colliderA->triangles.Values[a].C];
 
 				CollisionHelper.TransformTriangle(&modelA, aVals);
 
-				aVals[3] = (*aVals + aVals[1] + aVals[2]) * 0.33f;
+				aVals[3] = (aVals[0] + aVals[1] + aVals[2]) * 0.34f;
 
 
 				// Iterate through b's triangles
 				for(int b = 0; b < colliderB->triangles.Length; b++)
 				{
 
-					*bVals = colliderB->vertices.Values[colliderB->triangles.Values[b].A];
+					bVals[0] = colliderB->vertices.Values[colliderB->triangles.Values[b].A];
 					bVals[1] = colliderB->vertices.Values[colliderB->triangles.Values[b].B];
 					bVals[2] = colliderB->vertices.Values[colliderB->triangles.Values[b].C];
 
 					CollisionHelper.TransformTriangle(&modelB, bVals);
 
-					bVals[3] = (*bVals + bVals[1] + bVals[2]) * 0.33f;
+					bVals[3] = (bVals[0] + bVals[1] + bVals[2]) * 0.34f;
 
 
 					Vector2 nNormal;
@@ -981,15 +995,49 @@ namespace Core.SAS2D;
 		{
 			Collider c = new Collider
 			{
-				vertices = new NA<Vector2>(),
+				vertices = new NA<Vector2>(vertices.Length),
 				triangles = new NA<Triangle>(),
 				collidingWith = new NA<int>(),
-				colliderMaterialIndex = colliderMaterialIndex
+				colliderMaterialIndex = colliderMaterialIndex,
+				colliderAttribs = ColliderAttrib.None,
+				effectorForce = (0, 0),
 			};
 
 
+			// The sum of all edges
+			// of the given polygon
+			float allSum = 0;
+
+			// Iterate through each possible edge
+			// of the polygon and add their sums
+			// to the 
 			for(int i = 0; i < vertices.Length; i++)
-				Set(i, vertices[i], &c.vertices);
+				allSum += CollisionHelper.Sum(vertices[i], vertices[(i + 1) % vertices.Length]);
+
+			// Check if the vertices
+			// of the polygon are
+			// laid out clockwise
+			bool isClockwise = allSum >= 0;
+
+
+
+			// Set the method to call
+			// to the vertex reader
+			// for clockwise order,
+			// if the polygon's vertices
+			// are laid out clockwise
+			nint mCall = (nint)(delegate*<NA<Vector2>*, Vector2[], void>)&CollisionHelper.GetVerticesOnClockwise * *(byte*)&isClockwise;
+
+			// Set the method to call
+			// to the vertex reader
+			// for counter clockwise order,
+			// if the polygon's vertices
+			// are laid out counter clockwise
+			mCall += (nint)(delegate*<NA<Vector2>*, Vector2[], void>)&CollisionHelper.GetVerticesOnCounterClockwise * (*(byte*)&isClockwise ^ 0x01);
+
+			
+			// Call the made out method
+			((delegate*<NA<Vector2>*, Vector2[], void>)mCall)(&c.vertices, vertices);
 
 
 			CollisionHelper.TriangulatePolygon(&c.triangles, &c.vertices);
@@ -1072,6 +1120,7 @@ namespace Core.SAS2D;
 	// Defines unique
 	// behaviour for
 	// a collider
+	[Flags]
 	public enum ColliderAttrib : byte
 	{
 		// No attribute added
@@ -1091,6 +1140,11 @@ namespace Core.SAS2D;
 		// collision
 		// events
 		Trigger = 4,
+
+		// The collider
+		// is not being
+		// resolved
+		NotResolved = 8,
 	}
 
 	// Represents the triangle
@@ -1139,6 +1193,47 @@ namespace Core.SAS2D;
 			float halfDiameter = (lengthA + lengthB + lengthC) / 2f;
 			return MathF.Sqrt(halfDiameter * (halfDiameter - lengthA) * (halfDiameter - lengthB) * (halfDiameter - lengthC));
 		}
+
+
+        // Read the vertices of the
+        // managed array, if the polygon
+        // is clockwise
+        public static void GetVerticesOnClockwise(NA<Vector2>* vert, Vector2[] mVert)
+        {
+            // Iterate through each
+            // vertex of the managed
+            // array in a reverse fashion...
+            for(int i = mVert.Length - 1; i > -1; i--)
+                // Copy the current element
+                // of the managed array
+                // to the element at the
+                // same index of the
+                // unmanaged array
+                vert->Values[i] = mVert[i];
+        }
+
+        // Read the vertices of the
+        // managed array, if the polygon
+        // is counter clockwise
+        public static void GetVerticesOnCounterClockwise(NA<Vector2>* vert, Vector2[] mVert)
+        {
+            // Iterate through each
+            // vertex of the managed
+            // array in a reverse fashion...
+            for(int i = mVert.Length - 1; i > -1; i--)
+                // Copy the element at
+                // the "opposite" index
+                // of the managed array
+                // to the current index
+                // of the unmanaged array
+                vert->Values[i] = mVert[mVert.Length - 1 - i];
+        }
+
+        // Calculates the sum of the edge ab
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float Sum(Vector2 a, Vector2 b)
+            => (b.X - a.X) * (b.Y + a.Y);
+
 
     // Triangulates a polygon
     // into inidividual triangles
@@ -1319,20 +1414,18 @@ namespace Core.SAS2D;
 
 
             // If a point is within the triangle...
-            /*for(int v = 0; v < vertices->Length; v++)
+            for(int v = 0; v < vertices->Length; v++)
             {
                 if(v == a || v == b || v == c)  
                     continue;
 
-                if(!pointInTriangle(vertices->Values[v], vertices->Values[a], vertices->Values[b], vertices->Values[c]))
+                if(!IsPointInTriangle(vertices->Values[v], vertices->Values[a], vertices->Values[b], vertices->Values[c]))
                     continue;
 
                 a = (a + 1) % vertices->Length;
 
-                //ignoreVertices[++loadIndex] = b;
-
                 goto restart;
-            }*/
+            }
 
 
             // Calculate the vector
@@ -1421,7 +1514,7 @@ namespace Core.SAS2D;
             // transformation
             // matrix
             Vector4 result =
-                new Vector4(verts[i].X, verts[i].Y, 0f, 1f) * (*model);
+                new Vector4(verts[i].X, verts[i].Y, 0, 1) * (*model);
 
             // Saves the transformed
             // result to the fetched
@@ -1732,113 +1825,107 @@ namespace Core.SAS2D;
 			distanceSquared = Vector2.Distance(p, cp);
 		}
 
-		// Unrolling the for loop
-		// was a grave mistake
+        private static void ProjectVertices3(Vector2* vertices, Vector2 axis, out float min, out float max)
+        {
+			float proj = Vector2.Dot(vertices[2], axis);
 
-		// Token: 0x06000086 RID: 134 RVA: 0x00006F0C File Offset: 0x0000510C
+            min = proj;
+            max = proj;
+
+            for(int i = 1; i > -1; i--)
+            {
+                proj = Vector2.Dot(vertices[i], axis);
+
+
+				// Check if the projection
+				// is less than the given
+				// minimum
+				bool check = proj < min;
+
+				min = proj * *(byte*)&check + min * (*(byte*)&check ^ 0x01);
+
+				
+				// Check if the projection
+				// is greater than the given
+				// maximum
+				check = proj > max;
+
+				max = proj * *(byte*)&check + max * (*(byte*)&check ^ 0x01);
+            }
+        }
+
+		// Checks if two triangles
+		// intersect with eachother
 		public unsafe static bool TriangleToTriangle(Vector2* triA, Vector2* triB, out Vector2 normal, out float depth)
 		{
-			normal = Vector2.Zero;
+			normal = (0, 0);
+
 			depth = float.MaxValue;
-			Vector2 edge = *triA - triA[1];
-			Vector2 axis = new Vector2(-edge.Y, edge.X);
-			axis.Normalize();
-			float minA;
-			float maxA;
-			ProjectVertices(*triA, triA[1], triA[2], axis, out minA, out maxA);
-			float minB;
-			float maxB;
-			ProjectVertices(*triB, triB[1], triB[2], axis, out minB, out maxB);
-			if (minA >= maxB || minB >= maxA)
+
+
+			for(int i = 2; i > -1; i--)
 			{
-				return false;
+                Vector2 va = triA[i];
+                Vector2 vb = triA[(i + 1) % 3];
+
+                Vector2 edge = vb - va;
+                Vector2 axis = new Vector2(-edge.Y, edge.X);
+                axis = Vector2.Normalize(axis);
+
+                ProjectVertices3(triA, axis, out float minA, out float maxA);
+                ProjectVertices3(triB, axis, out float minB, out float maxB);
+
+                if(minA >= maxB || minB >= maxA)
+                {
+                    return false;
+                }
+
+                float axisDepth = MathF.Min(maxB - minA, maxA - minB);
+
+                if(axisDepth < depth)
+                {
+                    depth = axisDepth;
+                    normal = axis;
+                }
 			}
-			float axisDepth = MathF.Min(maxB - minA, maxA - minB);
-			if (axisDepth < depth)
+
+
+			for(int i = 2; i > -1; i--)
 			{
-				depth = axisDepth;
-				normal = axis;
+                Vector2 va = triB[i];
+                Vector2 vb = triB[(i + 1) % 3];
+
+                Vector2 edge = vb - va;
+                Vector2 axis = new Vector2(-edge.Y, edge.X);
+                axis = Vector2.Normalize(axis);
+
+                ProjectVertices3(triA, axis, out float minA, out float maxA);
+                ProjectVertices3(triB, axis, out float minB, out float maxB);
+
+                if(minA >= maxB || minB >= maxA)
+                {
+                    return false;
+                }
+
+                float axisDepth = MathF.Min(maxB - minA, maxA - minB);
+
+                if(axisDepth < depth)
+                {
+                    depth = axisDepth;
+                    normal = axis;
+                }
 			}
-			edge = triA[1] - triA[2];
-			axis = new Vector2(-edge.Y, edge.X);
-			axis.Normalize();
-			ProjectVertices(*triA, triA[1], triA[2], axis, out minA, out maxA);
-			ProjectVertices(*triB, triB[1], triB[2], axis, out minB, out maxB);
-			if (minA >= maxB || minB >= maxA)
-			{
-				return false;
-			}
-			axisDepth = MathF.Min(maxB - minA, maxA - minB);
-			if (axisDepth < depth)
-			{
-				depth = axisDepth;
-				normal = axis;
-			}
-			edge = triA[2] - *triA;
-			axis = new Vector2(-edge.Y, edge.X);
-			axis.Normalize();
-			ProjectVertices(*triA, triA[1], triA[2], axis, out minA, out maxA);
-			ProjectVertices(*triB, triB[1], triB[2], axis, out minB, out maxB);
-			if (minA >= maxB || minB >= maxA)
-			{
-				return false;
-			}
-			axisDepth = MathF.Min(maxB - minA, maxA - minB);
-			if (axisDepth < depth)
-			{
-				depth = axisDepth;
-				normal = axis;
-			}
-			edge = *triB - triB[1];
-			axis = new Vector2(-edge.Y, edge.X);
-			axis.Normalize();
-			ProjectVertices(*triA, triA[1], triA[2], axis, out minA, out maxA);
-			ProjectVertices(*triB, triB[1], triB[2], axis, out minB, out maxB);
-			if (minA >= maxB || minB >= maxA)
-			{
-				return false;
-			}
-			axisDepth = MathF.Min(maxB - minA, maxA - minB);
-			if (axisDepth < depth)
-			{
-				depth = axisDepth;
-				normal = axis;
-			}
-			edge = triB[1] - triB[2];
-			axis = new Vector2(-edge.Y, edge.X);
-			axis.Normalize();
-			ProjectVertices(*triA, triA[1], triA[2], axis, out minA, out maxA);
-			ProjectVertices(*triB, triB[1], triB[2], axis, out minB, out maxB);
-			if (minA >= maxB || minB >= maxA)
-			{
-				return false;
-			}
-			axisDepth = MathF.Min(maxB - minA, maxA - minB);
-			if (axisDepth < depth)
-			{
-				depth = axisDepth;
-				normal = axis;
-			}
-			edge = triB[2] - *triB;
-			axis = new Vector2(-edge.Y, edge.X);
-			axis.Normalize();
-			ProjectVertices(*triA, triA[1], triA[2], axis, out minA, out maxA);
-			ProjectVertices(*triB, triB[1], triB[2], axis, out minB, out maxB);
-			if (minA >= maxB || minB >= maxA)
-			{
-				return false;
-			}
-			axisDepth = MathF.Min(maxB - minA, maxA - minB);
-			if (axisDepth < depth)
-			{
-				depth = axisDepth;
-				normal = axis;
-			}
-			if (Vector2.Dot(triB[3] - triA[3], normal) < 0f)
-			{
-				normal = -normal;
-			}
-			return true;
+
+
+            Vector2 direction = triB[3] - triA[3];
+
+            if(Vector2.Dot(direction, normal) < 0f)
+            {
+                normal = -normal;
+            }
+
+
+            return true;
 		}
 
 		// Token: 0x06000087 RID: 135 RVA: 0x000073EC File Offset: 0x000055EC

@@ -40,7 +40,7 @@ public unsafe struct Label
         // the array
         // to hold the
         // fonts
-        fonts = new NA<NA<Character>>(0);
+        fonts = SmartPointer.CreateSmartPointer<nint>();
     }
 
 
@@ -51,13 +51,13 @@ public unsafe struct Label
         // Initialise the array
         // to store the charcters
         // of the sentence
-        Text = new NA<char>(i_text.Length);
+        Text = SmartPointer.CreateSmartPointer<char>(i_text.Length);
 
         // Initialise the array
         // to store the entities
         // that'll display the
         // characters of the sentence
-        Symbols = new NA<int>(i_text.Length);
+        Symbols = SmartPointer.CreateSmartPointer<int>(i_text.Length);
 
 
         // Save the given
@@ -66,7 +66,7 @@ public unsafe struct Label
 
         // Get a reference
         // to the current font
-        NA<Character>* font = &fonts.Values[FontID];
+        Character* font = (Character*)fonts[FontID];
 
 
         // Save the alignment of
@@ -85,22 +85,22 @@ public unsafe struct Label
         {
             // Copy the current character
             // to the text array of the label
-            Text.Values[i] = i_text[i];
+            Text[i] = i_text[i];
 
 
             // Create the entity that'll
             // represent the current character
-            Symbols.Values[i] = ECSSHandler.CreateEntity();
+            Symbols[i] = ECSSHandler.CreateEntity();
 
             // Get the info of the
             // current character
-            Character c = font->Values[Text.Values[i]];
+            Character c = font[Text[i]];
 
 
             // Add a transformation component
             // to the symbol and set it's
             // scale, rotation and translation
-            Gymbal.CreateTransform(Symbols.Values[i],
+            Gymbal.CreateTransform(Symbols[i],
                 (c.Size.X, c.Size.Y, 1f), (0f, 0f, 0f), (advance + c.Bearing.X + c.Size.X, c.Bearing.Y * 2f - c.Size.Y, 0f));
 
             // Increment the advance
@@ -111,7 +111,7 @@ public unsafe struct Label
 
             // Add a sprite component to the
             // current symbol
-            ECSSHandler.AddComponent(Symbols.Values[i], new Sprite()
+            ECSSHandler.AddComponent(Symbols[i], new Sprite()
                 {
                     TextureObjectIndex = c.TextureID,
 
@@ -124,6 +124,15 @@ public unsafe struct Label
                     Alpha = i_alpha
                 });
         }
+
+
+        Red = i_red;
+
+        Green = i_green;
+
+        Blue = i_blue;
+
+        Alpha = i_alpha;
     }
 
 
@@ -141,20 +150,20 @@ public unsafe struct Label
 
     // Holds the fonts
     // loaded by the user
-    private static NA<NA<Character>> fonts;
+    private static nint* fonts;
 
 
 	// The array to store
     // the characters
     // of the label's
     // sentence
-	public NA<char> Text;
+	public char* Text;
 
     // An array that stores
     // the entitys that
     // display each character
     // of the label
-    public NA<int> Symbols;
+    public int* Symbols;
 
 	// The idnetifier of the
     // used font
@@ -222,18 +231,22 @@ public unsafe struct Label
         // Fallback is set to
         // the length of the
         // array
-		int length = fonts.Length;
+		int length = SmartPointer.GetSmartPointerLength(fonts);
 
         // Fix the array . . .
-		fixed(NA<NA<Character>>* fPtr = &fonts)
+        fixed(nint** fPtr = &fonts)
+        {
             // Create the new character array
-            NAHandler.Set(length, new NA<Character>(characterAmount), fPtr);
+            Character* nFont = SmartPointer.CreateSmartPointer<Character>(characterAmount);
+
+            SmartPointer.Set(fPtr, length, (nint)nFont);
+        }
 
 
         // Get a pointer reference to
         // the array to load the
         // characters to
-        NA<Character>* font = &fonts.Values[length];
+        Character* font = (Character*)fonts[length];
 
 
         // Iterate for each
@@ -339,7 +352,7 @@ public unsafe struct Label
 
             // Save the newly made character
             // to the array of the font
-            NAHandler.Set((int)c, character, font);
+            SmartPointer.Set(&font, (int)c, character);
         }
         
         
@@ -351,6 +364,95 @@ public unsafe struct Label
         // Return the index
         // of the new font
         return length;
+    }
+
+
+    // Changes the display and
+    // contents of the text
+    // to the new given sentence
+    public static void ChangeText(int entityID, string nText)
+    {
+
+        Label* l = ECSSHandler.GetComponent<Label>(entityID);
+
+
+        for(int i = 0; i < SmartPointer.GetSmartPointerLength(l->Symbols); i++)
+
+            ECSSHandler.RemoveEntity(l->Symbols[i]);
+
+
+        // Get a reference
+        // to the current font
+        Character* font = (Character*)fonts[l->FontID];
+
+
+        SmartPointer.Free(l->Symbols);
+
+        SmartPointer.Free(l->Text);
+
+
+        l->Symbols = SmartPointer.CreateSmartPointer<int>(nText.Length);
+
+        l->Text = SmartPointer.CreateSmartPointer<char>(nText.Length);
+
+        
+        // A cache for the
+        // advance of the
+        // sentence
+        float advance = 0f;
+
+        // Iterate through each character
+        // from the given string
+        for(int i = 0; i < nText.Length; i++)
+        {
+            // Copy the current character
+            // to the text array of the label
+            SmartPointer.Set(&l->Text, i, nText[i]);
+
+
+            // Create the entity that'll
+            // represent the current character
+            SmartPointer.Set(&l->Symbols, i, ECSSHandler.CreateEntity());
+
+
+            // Get the info of the
+            // current character
+            Character c = font[nText[i]];
+
+
+            ECSSHandler.BindChild(entityID, l->Symbols[i]);
+
+
+            // Add a transformation component
+            // to the symbol and set it's
+            // scale, rotation and translation
+            Gymbal.CreateTransform(l->Symbols[i],
+                (c.Size.X, c.Size.Y, 1f), (0f, 0f, 0f), (advance + c.Bearing.X + c.Size.X, c.Bearing.Y * 2f - c.Size.Y, -10f));
+
+            // Increment the advance*
+            // by the advance of the
+            // current character
+            advance += c.Advance;
+
+
+            // Add a sprite component to the
+            // current symbol
+            ECSSHandler.AddComponent(l->Symbols[i], new Sprite()
+                {
+                    TextureObjectIndex = c.TextureID,
+
+                    Red = l->Red,
+
+                    Green = l->Green,
+
+                    Blue = l->Blue,
+
+                    Alpha = l->Alpha
+                });
+        }
+
+
+        alignText(l, entityID, SmartPointer.GetSmartPointerLength(l->Symbols));
     }
 
 
@@ -366,78 +468,88 @@ public unsafe struct Label
 
         // Iterate through
         // each symbol
-		for (int i = 0; i < l->Symbols.Length; i++)
+		for (int i = 0; i < SmartPointer.GetSmartPointerLength(l->Symbols); i++)
             // Bind the current
             // symbol to the parent
-			ECSSHandler.BindChild(entityID, l->Symbols.Values[i]);
+			ECSSHandler.BindChild(entityID, l->Symbols[i]);
 
 
         // Text is aligned to the
         // right by default
 
-
-        // Align text to the left
-        if((l->TextAlignment & Alignment.Left) == Alignment.Left)
-        {
-
-            float startToLastDist =
-                Gymbal.GetRelativeTranslation(l->Symbols.Values[l->Symbols.Length - 1]).X - Gymbal.GetRelativeTranslation(entityID).X;
-
-
-            for(int i = 0; i < l->Symbols.Length; i++)
-            {
-                Translation* sTran = ECSSHandler.GetComponent<Translation>(l->Symbols.Values[i]);
-
-                sTran->Translations.X -= startToLastDist;
-
-                Console.WriteLine(sTran->Translations);
-            }
-
-            goto vertical;
-        }
-
-
-        // Align text to the center
-        if((l->TextAlignment & Alignment.Center) == Alignment.Center)
-        {
-            float startToLastDist =
-                (Gymbal.GetRelativeTranslation(l->Symbols.Values[l->Symbols.Length - 1]).X - Gymbal.GetRelativeTranslation(entityID).X) * 0.5f;
-
-
-            for(int i = 0; i < l->Symbols.Length; i++)
-            {
-                Translation* sTran = ECSSHandler.GetComponent<Translation>(l->Symbols.Values[i]);
-
-                sTran->Translations.X -= startToLastDist;
-
-                Console.WriteLine(sTran->Translations);
-            }
-
-            goto vertical;
-        }
-
-
-    	// Implement later
-
-
-        vertical:
-
-
-        if((l->TextAlignment & Alignment.Middle) == Alignment.Middle)
-        {
-
-
-            return;
-        }
-
-
-        if((l->TextAlignment & Alignment.Down) == Alignment.Down)
-        {
-
-
-
-        }
+        alignText(l, entityID, SmartPointer.GetSmartPointerLength(l->Symbols));
 	}
+
+        // A hidden helper method
+        // for aligning the
+        // given text
+        private static void alignText(Label* l, int entityID, int len)
+        {
+            // Align text to the left
+            if((l->TextAlignment & Alignment.Left) == Alignment.Left)
+            {
+                Scale* scale = ECSSHandler.GetComponent<Scale>(entityID);
+
+                float invWidthDivisor = 1 / scale->Scales.X;
+
+
+                Translation* tran = ECSSHandler.GetComponent<Translation>(l->Symbols[len - 1]);
+
+
+                for(int i = 0; i < len; i++)
+                {
+                    Translation* sTran = ECSSHandler.GetComponent<Translation>(l->Symbols[i]);
+
+                    sTran->Translations.X -= tran->Translations.X;
+                }
+
+                goto vertical;
+            }
+
+
+            // Align text to the center
+            if((l->TextAlignment & Alignment.Center) == Alignment.Center)
+            {
+                Scale* scale = ECSSHandler.GetComponent<Scale>(entityID);
+
+                float invWidthDivisor = 1 / scale->Scales.X;
+
+
+                Translation* tran = ECSSHandler.GetComponent<Translation>(l->Symbols[len - 1]);
+
+
+                for(int i = 0; i < len; i++)
+                {
+                    Translation* sTran = ECSSHandler.GetComponent<Translation>(l->Symbols[i]);
+
+                    sTran->Translations.X -= tran->Translations.X * 0.5f * invWidthDivisor;
+                }
+
+                goto vertical;
+            }
+
+
+            // Implement later
+
+
+            vertical:
+
+
+            if((l->TextAlignment & Alignment.Middle) == Alignment.Middle)
+            {
+
+
+                return;
+            }
+
+
+            if((l->TextAlignment & Alignment.Down) == Alignment.Down)
+            {
+
+
+
+            }
+        }
 
     // The finalizer
     // for the component
@@ -449,9 +561,10 @@ public unsafe struct Label
         // the label component
 		Label* l = ECSSHandler.GetComponent<Label>(entityID);
 
-        // Free the unmanaged
-        // character array
-        NAHandler.Free(&l->Text);
+        for(int i = 0; i < SmartPointer.GetSmartPointerLength(l->Symbols); i++)
+            ECSSHandler.RemoveEntity(l->Symbols[i]);
+
+        SmartPointer.Free(l->Text);
 	}
 }
 

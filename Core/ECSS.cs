@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using Core.MemoryManagement;
 
-namespace Core.ECSS;
+//namespace Core.ECSS;
 
 // TODO:
 // Change the basic ECS
@@ -24,7 +24,7 @@ namespace Core.ECSS;
 // system itself, or manually
 // adding the components
 // through methods
-public static unsafe class ECSSHandler
+/*public static unsafe class ECSSHandler
 {
     // static constructor
     static ECSSHandler()
@@ -1043,6 +1043,7 @@ public static unsafe class ECSSHandler
         // Set the entity's component record to 0
         NAHandler.Set(nIndex, new ComponentRecord(), &Entities.Values[CurrentScene].ComponentRecords);
 
+
         // Return the made out index
         return nIndex;
     }
@@ -1052,9 +1053,170 @@ public static unsafe class ECSSHandler
     // id in the current scene
     public static void RemoveEntity(int entityID)
     {
+        Entities.Values[CurrentScene].IDs.Values[entityID] = 0;
+
+
+        // FIXME!
+        // This breaks the engine for whatever reason
+        // FIXME!
+
+        Entities.Values[CurrentScene].EnableState.Values[entityID] = false;
+
+
+        // Remove the entity from
+        // the record of it's parent
+
+        int parent = Entities.Values[CurrentScene].Parents.Values[entityID];
+
+        for(int i = 0; i < Entities.Values[CurrentScene].Children.Values[parent].Length; i++)
+        {
+            if(Entities.Values[CurrentScene].Children.Values[parent].Values[i] != entityID)
+                continue;
+
+            Entities.Values[CurrentScene].Children.Values[parent].Values[i] = 0;
+
+            break;
+        }
+
+
+        // Set the entity's parent to 0
+        Entities.Values[CurrentScene].Parents.Values[entityID] = 0;
+
+
+        // Free the children
+        // and the array that
+        // tracks them
+
+        // Free the children
+        for(int i = 0; i < Entities.Values[CurrentScene].Children.Values[entityID].Length; i++)
+            // Get the id of the current
+            // child and remove it
+            RemoveEntity(Entities.Values[CurrentScene].Children.Values[entityID].Values[i]);
+
+        // Free the array
+        NAHandler.Free(&Entities.Values[CurrentScene].Children.Values[entityID]);
+
+
+        Console.WriteLine(Entities.Values[CurrentScene].EnableState.Values[entityID]);
+
+
+        // Iterate through the
+        // component records
+        // of the given entity
+        for(int i = 0; i < Entities.Values[CurrentScene].ComponentRecords.Values[entityID].Length; i++)
+        {
+            // If the current iteration's
+            // saved component type id is
+            // zero...
+            if(Entities.Values[CurrentScene].ComponentRecords.Values[entityID].IDs[i] == 0)
+                // Skip to the
+                // next iteration
+                continue;
+
+            // Cache the current type id
+            // of the iteration
+            int currentTypeID = Entities.Values[CurrentScene].ComponentRecords.Values[entityID].IDs[i];
+
+            // Iterate through the
+            // behaviours of the
+            // component types
+            for(int j = 0; j < behaviours.TypeID.Length; j++)
+            {
+                // If the current type iteration
+                // of the behaviour list is not the
+                // same as the type id of the current
+                // iteration of the component records...
+                if(behaviours.TypeID.Values[j] != currentTypeID)
+                    // Skip to the
+                    // next iteration
+                    continue;
+
+                // If the finalizer is defined...
+                if(behaviours.Finalise.Values[j] != 0)
+                    // Call the finaliser
+                    ((delegate*<int, void>)behaviours.Finalise.Values[j])(entityID);
+            }
+
+
+            // CONSTRUCTION ONGOING HERE
+
+
+            // Cache the index of
+            // the column that holds
+            // the current component
+            int columnIndex = 0;
+
+            // Iterate through
+            // the columns of
+            // the scenes
+            for(int j = 0; j < Components.Length; j++)
+            {
+                // If the current column's
+                // scene belonging isn't the
+                // same as the current scene
+                // or if the current column's
+                // type id isn't the same as the
+                // given component type id...
+                if(Components.Values[j].SceneBelonging != CurrentScene ||
+                    Components.Values[j].TypeID != currentTypeID)
+                        // Skip to the
+                        // next iteration
+                        continue;
+
+                // Store the current
+                // iteration's index
+                columnIndex = j;
+
+                // Break out of
+                // the loop
+                break;
+            }
+
+            // Iterate through the
+            // entity ids of the
+            // made out column
+            for(int j = 0; j < Components.Values[columnIndex].Length; j++)
+            {
+                // If the current iteration's
+                // id is not the same as the
+                // given entity id...
+                if(Components.Values[columnIndex].EntityIDs[j] != entityID)
+                    // Skip to the
+                    // next iteration
+                    continue;
+
+                // Set the current
+                // ietartion to zero
+                Components.Values[columnIndex].EntityIDs[j] = 0;
+
+                // Break out of the loop
+                break;
+            }
+        }
+
+
+
+
+
         // Set the entity's id to the
-        // currnetly found index
-        NAHandler.Set(entityID, 0, &Entities.Values[CurrentScene].IDs);
+        // currently found index
+        /*NAHandler.Set(entityID, 0, &Entities.Values[CurrentScene].IDs);
+
+
+        // Remove the entity from
+        // the record of it's parent
+
+        int parent = Entities.Values[CurrentScene].Parents.Values[entityID];
+
+        for(int i = 0; i < Entities.Values[CurrentScene].Children.Values[parent].Length; i++)
+        {
+            if(Entities.Values[CurrentScene].Children.Values[parent].Values[i] != entityID)
+                continue;
+
+            Entities.Values[CurrentScene].Children.Values[parent].Values[i] = 0;
+
+            break;
+        }
 
 
         // Set the entity's parent to 0
@@ -1075,7 +1237,10 @@ public static unsafe class ECSSHandler
         NAHandler.Free(&Entities.Values[CurrentScene].Children.Values[entityID]);
 
 
-        // Set the entity's enable state to enbabled
+
+        // THIS IS PROBLEMATIC
+
+        // Set the entity's enable state to disabled
         NAHandler.Set(entityID, false, &Entities.Values[CurrentScene].EnableState);
 
 
@@ -1110,8 +1275,10 @@ public static unsafe class ECSSHandler
                     // next iteration
                     continue;
 
-                // Call the finaliser
-                ((delegate*<int, void>)behaviours.Finalise.Values[j])(entityID);
+                // If the finalizer is defined...
+                if(behaviours.Finalise.Values[j] != 0)
+                    // Call the finaliser
+                    ((delegate*<int, void>)behaviours.Finalise.Values[j])(entityID);
             }
 
             // Cache the index of
@@ -1170,6 +1337,7 @@ public static unsafe class ECSSHandler
 
         // Free the entity's component record
         Entities.Values[CurrentScene].ComponentRecords.Values[entityID].Free();
+
     }
 
     // Binds an entity
@@ -1362,7 +1530,8 @@ public static unsafe class ECSSHandler
         // of the component
         // for the entity to
         // occupy at
-        int componentIndex = Components.Values[columnIndex].Length;
+        int componentIndex = Components.Values[columnIndex].Length == 0 ?
+            1 : Components.Values[columnIndex].Length;
 
         // Iterate through the entity ids
         for(int i = 1; i < Components.Values[columnIndex].Length; i++)
@@ -2476,4 +2645,4 @@ public enum MMRequestType : byte
     Remove = 2,
 
 
-}
+}*/

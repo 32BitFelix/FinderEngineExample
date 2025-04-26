@@ -1,6 +1,7 @@
 
 using System.Reflection;
 using System.Runtime.InteropServices;
+using Core.FinderIO;
 using Core.InputManager;
 using Core.MemoryManagement;
 using OpenTK.Graphics.OpenGL4;
@@ -65,20 +66,14 @@ public static unsafe class FinderEngine
         GLFW.WindowHint(WindowHintOpenGlProfile.OpenGlProfile, OpenGlProfile.Core);
 
 
-        GLFW.WindowHint(WindowHintInt.Samples, 4);
-
-
         GLFW.WindowHint(WindowHintBool.Focused, true);
-
+        
 
         currentCursorMode = CursorModeValue.CursorNormal;
 
 
         // Create a window
         window = GLFW.CreateWindowRaw(windowSize.X, windowSize.Y, title, null, null);
-
-
-        GLFW.SetWindowSize(window, windowSize.X, windowSize.Y);
 
 
         // Check if the making of the window failed
@@ -107,8 +102,7 @@ public static unsafe class FinderEngine
 
         // Set the vertical synchronisation mode
         // zero is off, one is on
-        GLFW.SwapInterval(0);
-
+        GLFW.SwapInterval(1);
 
         // Load a glfw bindings context
         glfwContext = new GLFWBindingsContext();
@@ -123,6 +117,14 @@ public static unsafe class FinderEngine
         GL.ClearColor(1, 1, 1, 1);   
 
 
+        // Enable depth testing
+        GL.Enable(EnableCap.DepthTest);
+
+        // Set the depthtest to
+        // always override
+        GL.DepthFunc(DepthFunction.Less);
+
+
         GL.Enable(EnableCap.Blend);
 
         GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);  
@@ -132,6 +134,9 @@ public static unsafe class FinderEngine
 
         // Start the resource loader
         //new FinderEngie.ResourceLoader.Loader();
+
+
+        new KBMInput();
     }
 
 
@@ -157,7 +162,7 @@ public static unsafe class FinderEngine
 
     // Only returns the
     // size of the window
-    public static Vector2 GetWindowSize
+    public static Vector2i GetWindowSize
         => windowSize;
 
 
@@ -195,9 +200,8 @@ public static unsafe class FinderEngine
         {
             GLFW.PollEvents();
 
-            GL.Clear(ClearBufferMask.DepthBufferBit | ClearBufferMask.ColorBufferBit |
-                ClearBufferMask.StencilBufferBit);
 
+            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
             // Loop stuff
 
@@ -214,7 +218,8 @@ public static unsafe class FinderEngine
 
             GLFW.SwapBuffers(window);
 
-            Input.ResetDirect();
+
+            KBMInput.Update();
 
 
             processWindowChanges();
@@ -239,10 +244,10 @@ public static unsafe class FinderEngine
         // Set the new
         // windowsize
         windowSize = (width, height);
-
+        
         // Call the resize
         // of the ECSSHandler
-        ECSS.ECSSHandler.ECSSResize(width, height);
+        ECSS.ECSSHandler.ECSSResize();
     }
 
     // The array to hold the requested
@@ -310,6 +315,8 @@ public static unsafe class FinderEngine
                 // Set the refresh rate
                 // of the monitor
                 GLFW.SetWindowMonitor(window, monitor, 0, 0, mode->Width, mode->Height, refreshRate);
+
+                GLFW.WindowHint(WindowHintInt.Samples, 8);
 
                 // Set the window change clue
                 // to default
@@ -389,7 +396,7 @@ public static unsafe class FinderEngine
                         VideoMode* nMode = GLFW.GetVideoMode(monitor);
 
                         // Set the window to
-                        // fullscreenm while
+                        // fullscreen while
                         // preserving the
                         // previous information
                         GLFW.SetWindowMonitor(window, monitor, 0, 0, nMode->Width, nMode->Height, nMode->RefreshRate);
@@ -438,6 +445,9 @@ public static unsafe class FinderEngine
 
             if(changes.Values[i].clue == WindowChangeClue.WindowClose)
             {
+                // Iconify the window
+                GLFW.IconifyWindow(window);
+
                 // Tell glfw to close the window
                 GLFW.SetWindowShouldClose(window, true);
 
